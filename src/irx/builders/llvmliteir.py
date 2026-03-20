@@ -2303,6 +2303,51 @@ class LLVMLiteIRVisitor(BuilderVisitor):
         )
 
     @dispatch  # type: ignore[no-redef]
+    def visit(self, node: astx.SubscriptExpr) -> None:
+        """
+        title: SubscriptExpr lowering — tuple element access.
+        parameters:
+          node:
+            type: astx.SubscriptExpr
+        """
+        self.visit(node.value)
+        tuple_val = self.result_stack.pop()
+
+        if not (
+            isinstance(tuple_val, ir.Constant)
+            and isinstance(tuple_val.type, ir.LiteralStructType)
+        ):
+            raise TypeError(
+                "SubscriptExpr: only constant LiteralTuple subscript "
+                "is supported in this version"
+            )
+
+        if not isinstance(node.index, astx.Literal):
+            raise TypeError(
+                "SubscriptExpr: tuple index must be a constant literal — "
+                "LLVM struct fields require a compile-time constant index"
+            )
+
+        self.visit(node.index)
+        idx_val = self.result_stack.pop()
+
+        if not isinstance(idx_val, ir.Constant):
+            raise TypeError(
+                "SubscriptExpr: tuple index must lower to a constant"
+            )
+
+        idx = int(idx_val.constant)
+        n_fields = len(tuple_val.type.elements)
+
+        if idx < 0 or idx >= n_fields:
+            raise IndexError(
+                f"SubscriptExpr: tuple index {idx} out of range "
+                f"for tuple of length {n_fields}"
+            )
+
+        self.result_stack.append(tuple_val.constant[idx])
+
+    @dispatch  # type: ignore[no-redef]
     def visit(self, node: astx.LiteralDict) -> None:
         """
         title: LiteralDict lowering
